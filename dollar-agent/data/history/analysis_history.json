@@ -1,0 +1,106 @@
+{
+  "analyses": [
+    {
+      "timestamp": "2026-03-08T15:29:06.628047+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:29:39.660638+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:30:13.945157+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:32:29.855176+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:33:10.226445+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:36:02.879046+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:37:44.244155+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:42:29.662288+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:47:34.790382+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-08T15:48:08.436648+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:22:43.631174+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:23:52.649862+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:26:44.951622+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:27:51.465454+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:30:22.971304+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-03-09T00:32:46.317624+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-09T00:34:20.915323+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
+    }
+  ]
+}
