@@ -44,7 +44,7 @@ class RepositoryPromptGuidanceLoaderAdapter(RepositoryPromptGuidancePort):
                 unique_names.append(name)
 
         candidates: list[Path] = []
-        for directory in (root, root / ".github"):
+        for directory in (root / "prompt-guidance", root, root / ".github"):
             for name in unique_names:
                 candidates.extend(
                     [

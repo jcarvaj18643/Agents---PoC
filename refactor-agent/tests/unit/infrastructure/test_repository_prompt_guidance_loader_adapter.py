@@ -7,7 +7,9 @@ from app.infrastructure.adapters.policy_loader.repository_prompt_guidance_loader
 
 class TestRepositoryPromptGuidanceLoaderAdapter:
     def test_loads_yaml_repository_guidance(self, tmp_path: Path) -> None:
-        (tmp_path / "repository-guidance.yaml").write_text(
+        guidance_dir = tmp_path / "prompt-guidance"
+        guidance_dir.mkdir()
+        (guidance_dir / "repository-guidance.yaml").write_text(
             "repository:\n"
             "  name: rag_system\n"
             "  framework: .NET 8\n"
@@ -29,6 +31,23 @@ class TestRepositoryPromptGuidanceLoaderAdapter:
         assert guidance.architecture == "Hexagonal"
         assert guidance.design_principles == ("Apply SOLID",)
         assert guidance.layer_conventions == ("api: path=src/Api; responsibility=HTTP endpoints",)
+
+    def test_prefers_prompt_guidance_directory_over_root_file(self, tmp_path: Path) -> None:
+        (tmp_path / "repository-guidance.yaml").write_text(
+            "repository:\n  name: root-guidance\n",
+            encoding="utf-8",
+        )
+        guidance_dir = tmp_path / "prompt-guidance"
+        guidance_dir.mkdir()
+        (guidance_dir / "repository-guidance.yaml").write_text(
+            "repository:\n  name: folder-guidance\n",
+            encoding="utf-8",
+        )
+
+        guidance = RepositoryPromptGuidanceLoaderAdapter().load(str(tmp_path), "python")
+
+        assert guidance is not None
+        assert guidance.repository_name == "folder-guidance"
 
     def test_loads_profile_specific_json_before_default(self, tmp_path: Path) -> None:
         (tmp_path / "repository-guidance.json").write_text(

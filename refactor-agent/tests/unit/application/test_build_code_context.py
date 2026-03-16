@@ -278,7 +278,9 @@ class TestBuildCodeContextUseCase:
         assert files[0].changed_line_numbers == (5,)
 
     def test_attaches_repository_prompt_guidance_when_configuration_file_exists(self, tmp_path: Path) -> None:
-        (tmp_path / "repository-guidance.yaml").write_text(
+        guidance_dir = tmp_path / "prompt-guidance"
+        guidance_dir.mkdir()
+        (guidance_dir / "repository-guidance.yaml").write_text(
             "repository:\n"
             "  name: rag_system\n"
             "  framework: .NET 8\n"
