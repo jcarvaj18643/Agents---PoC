@@ -49,6 +49,10 @@ class PublishPullRequestCommentUseCase:
         ]
         if result.review_branch is not None:
             lines.append(f"- Review branch: `{result.review_branch.branch_name}`")
+        if result.review_branch_validation_result is not None:
+            lines.append(
+                f"- Review branch validation: `{result.review_branch_validation_result.status.value}`"
+            )
         if result.review_pull_request is not None:
             lines.append(f"- Review PR: #{result.review_pull_request.number}")
         if result.report_path:

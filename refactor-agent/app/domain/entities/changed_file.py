@@ -24,6 +24,7 @@ class ChangedFile:
     context_snapshot: str = ""
     full_file_context: str = ""
     symbol_context: str = ""
+    repository_guidance: str = ""
     impacted_symbol: ChangedSymbol | None = None
 
     @property

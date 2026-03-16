@@ -72,6 +72,12 @@ def _parse_args() -> argparse.Namespace:
         help="Push the review branch to the configured remote after committing approved patches",
     )
     parser.add_argument(
+        "--validate-review-branch",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Run validation checks against the materialized review branch before PR promotion",
+    )
+    parser.add_argument(
         "--review-branch-name",
         default=None,
         help="Explicit name for the review branch; otherwise a deterministic *_refactor name is generated",
@@ -118,6 +124,9 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     container = build_container()
+    validate_review_branch = args.validate_review_branch or args.create_review_pull_request
+    publish_review_branch = args.publish_review_branch or validate_review_branch
+    push_review_branch = args.push_review_branch or args.create_review_pull_request
 
     request = AgentRunRequest(
         repo_path=args.repo_path,
@@ -127,8 +136,9 @@ def main() -> None:
         triggered_by="cli",
         dry_run=args.dry_run,
         apply_refactors=args.apply_refactors,
-        publish_review_branch=args.publish_review_branch,
-        push_review_branch=args.push_review_branch,
+        publish_review_branch=publish_review_branch,
+        push_review_branch=push_review_branch,
+        validate_review_branch=validate_review_branch,
         review_branch_name=args.review_branch_name,
         review_remote_name=args.review_remote_name,
         repository=args.repository,
@@ -137,12 +147,13 @@ def main() -> None:
     )
 
     logger.info(
-        "Starting governance agent [run_id=%s, dry_run=%s, apply_refactors=%s, publish_review_branch=%s, push_review_branch=%s, publish_pr_comment=%s, create_review_pull_request=%s]",
+        "Starting governance agent [run_id=%s, dry_run=%s, apply_refactors=%s, publish_review_branch=%s, push_review_branch=%s, validate_review_branch=%s, publish_pr_comment=%s, create_review_pull_request=%s]",
         request.run_id,
         request.dry_run,
         request.apply_refactors,
         request.publish_review_branch,
         request.push_review_branch,
+        request.validate_review_branch,
         request.publish_pr_comment,
         request.create_review_pull_request,
     )

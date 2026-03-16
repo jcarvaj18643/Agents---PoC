@@ -107,6 +107,8 @@ class LlmDocumentationGeneratorAdapter(LlmDocumentationGeneratorPort):
                 "Generate concise markdown documentation focused on the changed area.",
                 "Include: purpose, impacted symbol, change summary, and refactor/testing notes when justified.",
                 "Do not invent APIs or behavior not supported by the provided context.",
+                "Repository guidance:",
+                changed_file.repository_guidance or "No repository-specific guidance provided.",
                 f"File: {changed_file.path.as_posix()}",
                 f"Impacted symbol: {symbol_name}",
                 "Policies:",

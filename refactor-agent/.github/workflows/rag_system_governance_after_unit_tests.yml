@@ -1,0 +1,242 @@
+name: governance-agent-after-unit-tests
+
+on:
+  workflow_run:
+    workflows: ["unit-tests"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      agent_path:
+        description: "Path to the embedded agent inside rag_system"
+        required: false
+        default: "tools/refactor-agent"
+      base_ref:
+        description: "Base branch, tag, or commit SHA to diff against"
+        required: false
+        default: ""
+      head_ref:
+        description: "Head branch, tag, or commit SHA containing the candidate changes"
+        required: false
+        default: ""
+      pull_request_number:
+        description: "Optional PR number for manual smoke tests"
+        required: false
+        default: ""
+      publish_review_branch:
+        description: "Materialize a review branch from approved patches"
+        required: false
+        type: boolean
+        default: false
+      push_review_branch:
+        description: "Push the generated review branch"
+        required: false
+        type: boolean
+        default: false
+      validate_review_branch:
+        description: "Run post-branch validation before PR promotion"
+        required: false
+        type: boolean
+        default: true
+      create_review_pull_request:
+        description: "Create or reuse a PR from the validated review branch"
+        required: false
+        type: boolean
+        default: false
+      review_branch_name:
+        description: "Optional explicit review branch name"
+        required: false
+        default: ""
+      review_remote_name:
+        description: "Remote used when pushing the generated review branch"
+        required: false
+        default: "origin"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: governance-agent-${{ github.event_name }}-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  governance:
+    name: Run governance agent after unit-tests
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve execution context
+        id: context
+        uses: actions/github-script@v7
+        env:
+          DEFAULT_AGENT_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.agent_path || 'tools/refactor-agent' }}
+          MANUAL_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.base_ref || '' }}
+          MANUAL_HEAD_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref || '' }}
+          MANUAL_PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pull_request_number || '' }}
+          MANUAL_PUBLISH_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_review_branch || 'false' }}
+          MANUAL_PUSH_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.push_review_branch || 'false' }}
+          MANUAL_VALIDATE_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_review_branch || 'true' }}
+          MANUAL_CREATE_REVIEW_PULL_REQUEST: ${{ github.event_name == 'workflow_dispatch' && inputs.create_review_pull_request || 'false' }}
+          MANUAL_REVIEW_BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.review_branch_name || '' }}
+          MANUAL_REVIEW_REMOTE_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.review_remote_name || 'origin' }}
+        with:
+          script: |
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const eventName = context.eventName;
+
+            const outputs = {
+              should_run: 'true',
+              skip_reason: '',
+              repository,
+              agent_path: process.env.DEFAULT_AGENT_PATH || 'tools/refactor-agent',
+              base_sha: '',
+              head_sha: '',
+              base_ref: '',
+              head_ref: '',
+              pr_number: process.env.MANUAL_PR_NUMBER || '',
+              publish_review_branch: process.env.MANUAL_PUBLISH_REVIEW_BRANCH || 'false',
+              push_review_branch: process.env.MANUAL_PUSH_REVIEW_BRANCH || 'false',
+              validate_review_branch: process.env.MANUAL_VALIDATE_REVIEW_BRANCH || 'true',
+              create_review_pull_request: process.env.MANUAL_CREATE_REVIEW_PULL_REQUEST || 'false',
+              review_branch_name: process.env.MANUAL_REVIEW_BRANCH_NAME || '',
+              review_remote_name: process.env.MANUAL_REVIEW_REMOTE_NAME || 'origin',
+            };
+
+            if (eventName === 'workflow_dispatch') {
+              outputs.base_sha = process.env.MANUAL_BASE_REF || '';
+              outputs.head_sha = process.env.MANUAL_HEAD_REF || '';
+              outputs.base_ref = process.env.MANUAL_BASE_REF || '';
+              outputs.head_ref = process.env.MANUAL_HEAD_REF || '';
+
+              if (!outputs.base_sha || !outputs.head_sha) {
+                outputs.should_run = 'false';
+                outputs.skip_reason = 'workflow_dispatch requires base_ref and head_ref.';
+              }
+            } else {
+              const run = context.payload.workflow_run;
+              if (!run) {
+                outputs.should_run = 'false';
+                outputs.skip_reason = 'Missing workflow_run payload.';
+              } else if (run.event !== 'pull_request') {
+                outputs.should_run = 'false';
+                outputs.skip_reason = `Skipping because unit-tests was triggered by ${run.event}, not pull_request.`;
+              } else if (!Array.isArray(run.pull_requests) || run.pull_requests.length === 0) {
+                outputs.should_run = 'false';
+                outputs.skip_reason = 'Skipping because the completed unit-tests run is not attached to a pull request.';
+              } else {
+                const prNumber = run.pull_requests[0].number;
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                });
+
+                if (!pr.head.repo || pr.head.repo.full_name !== repository) {
+                  outputs.should_run = 'false';
+                  outputs.skip_reason = 'Skipping because automatic review-branch publication is limited to pull requests whose head branch lives in the same repository.';
+                } else {
+                  outputs.base_sha = pr.base.sha;
+                  outputs.head_sha = pr.head.sha;
+                  outputs.base_ref = pr.base.ref;
+                  outputs.head_ref = pr.head.ref;
+                  outputs.pr_number = String(pr.number);
+                  outputs.publish_review_branch = 'true';
+                  outputs.push_review_branch = 'true';
+                  outputs.validate_review_branch = 'true';
+                  outputs.create_review_pull_request = 'true';
+                }
+              }
+            }
+
+            for (const [key, value] of Object.entries(outputs)) {
+              core.setOutput(key, value);
+            }
+
+      - name: Skip when run is not applicable
+        if: steps.context.outputs.should_run != 'true'
+        run: |
+          echo "Skipping governance workflow"
+          echo "Reason: ${{ steps.context.outputs.skip_reason }}"
+          {
+            echo "## Governance Agent"
+            echo
+            echo "- Status: skipped"
+            echo "- Reason: ${{ steps.context.outputs.skip_reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout target repository
+        if: steps.context.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.context.outputs.head_sha }}
+
+      - name: Verify embedded agent path
+        if: steps.context.outputs.should_run == 'true'
+        run: |
+          test -f "${{ steps.context.outputs.agent_path }}/requirements.txt"
+          test -f "${{ steps.context.outputs.agent_path }}/app/entrypoints/github_actions/runner.py"
+
+      - name: Set up Python 3.11
+        if: steps.context.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            ${{ steps.context.outputs.agent_path }}/requirements.txt
+
+      - name: Install agent dependencies in isolated environment
+        if: steps.context.outputs.should_run == 'true'
+        run: |
+          python -m venv .venv-governance-agent
+          . .venv-governance-agent/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r "${{ steps.context.outputs.agent_path }}/requirements.txt"
+
+      - name: Run governance agent
+        if: steps.context.outputs.should_run == 'true'
+        id: run_governance
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ steps.context.outputs.repository }}
+          GITHUB_BASE_REF: ${{ steps.context.outputs.base_sha }}
+          GITHUB_HEAD_REF: ${{ steps.context.outputs.head_sha }}
+          GITHUB_BASE_BRANCH: ${{ steps.context.outputs.base_ref }}
+          GITHUB_HEAD_BRANCH: ${{ steps.context.outputs.head_ref }}
+          GITHUB_PR_NUMBER: ${{ steps.context.outputs.pr_number }}
+          GOVERNANCE_PUBLISH_REVIEW_BRANCH: ${{ steps.context.outputs.publish_review_branch }}
+          GOVERNANCE_PUSH_REVIEW_BRANCH: ${{ steps.context.outputs.push_review_branch }}
+          GOVERNANCE_VALIDATE_REVIEW_BRANCH: ${{ steps.context.outputs.validate_review_branch }}
+          GOVERNANCE_CREATE_REVIEW_PULL_REQUEST: ${{ steps.context.outputs.create_review_pull_request }}
+          GOVERNANCE_REVIEW_BRANCH_NAME: ${{ steps.context.outputs.review_branch_name }}
+          GOVERNANCE_REVIEW_REMOTE_NAME: ${{ steps.context.outputs.review_remote_name }}
+          DRY_RUN: "false"
+          REPORTS_DIR: "${{ github.workspace }}/reports/governance"
+        run: |
+          . .venv-governance-agent/bin/activate
+          python "${{ steps.context.outputs.agent_path }}/app/entrypoints/github_actions/runner.py"
+
+      - name: Log run outputs
+        if: always() && steps.context.outputs.should_run == 'true'
+        run: |
+          echo "governance_success=${{ steps.run_governance.outputs.success }}"
+          echo "governance_run_id=${{ steps.run_governance.outputs.run_id }}"
+          echo "governance_status=${{ steps.run_governance.outputs.governance_status }}"
+          echo "validation_status=${{ steps.run_governance.outputs.validation_status }}"
+          echo "review_branch_validation_status=${{ steps.run_governance.outputs.review_branch_validation_status }}"
+          echo "review_branch_name=${{ steps.run_governance.outputs.review_branch_name }}"
+          echo "review_pull_request_url=${{ steps.run_governance.outputs.review_pull_request_url }}"
+          echo "pull_request_comment_url=${{ steps.run_governance.outputs.pull_request_comment_url }}"
+          echo "report_path=${{ steps.run_governance.outputs.report_path }}"
+
+      - name: Upload governance report artifact
+        if: always() && steps.context.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-report-${{ github.run_id }}
+          path: reports/governance/
+          if-no-files-found: ignore

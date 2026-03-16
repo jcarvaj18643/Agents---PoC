@@ -19,6 +19,7 @@ class AgentRunRequest:
     apply_refactors: bool = False
     publish_review_branch: bool = False
     push_review_branch: bool = False
+    validate_review_branch: bool = False
     review_branch_name: Optional[str] = None
     review_remote_name: str = "origin"
     repository: Optional[str] = None

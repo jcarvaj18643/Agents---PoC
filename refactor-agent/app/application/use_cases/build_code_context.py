@@ -2,6 +2,9 @@ from pathlib import Path
 from typing import List
 
 from app.application.ports.outbound.filesystem_port import FileSystemPort
+from app.application.ports.outbound.repository_prompt_guidance_port import (
+    RepositoryPromptGuidancePort,
+)
 from app.application.ports.outbound.symbol_context_resolver_port import SymbolContextResolverPort
 from app.domain.entities.changed_file import ChangedFile
 from app.domain.entities.code_scope import CodeScope
@@ -21,15 +24,18 @@ class BuildCodeContextUseCase:
         self,
         filesystem: FileSystemPort,
         symbol_context_resolver: SymbolContextResolverPort | None = None,
+        repository_prompt_guidance_loader: RepositoryPromptGuidancePort | None = None,
         max_context_chars: int = 4000,
     ) -> None:
         self._filesystem = filesystem
         self._symbol_context_resolver = symbol_context_resolver
+        self._repository_prompt_guidance_loader = repository_prompt_guidance_loader
         self._max_context_chars = max_context_chars
 
-    def execute(self, scope: CodeScope, repo_path: str) -> List[ChangedFile]:
+    def execute(self, scope: CodeScope, repo_path: str, profile_name: str | None = None) -> List[ChangedFile]:
         enriched_files: List[ChangedFile] = []
         root = Path(repo_path)
+        repository_guidance = self._load_repository_guidance(repo_path, profile_name)
 
         for changed_file in scope.changed_files:
             absolute_path = root / changed_file.path
@@ -63,6 +69,7 @@ class BuildCodeContextUseCase:
                     context_snapshot=context_snapshot,
                     full_file_context=full_file_context,
                     symbol_context=symbol_context,
+                    repository_guidance=repository_guidance,
                     impacted_symbol=impacted_symbol,
                 )
             )
@@ -100,3 +107,11 @@ class BuildCodeContextUseCase:
         if len(content) <= self._max_context_chars:
             return content
         return content[: self._max_context_chars] + "\n... [truncated]"
+
+    def _load_repository_guidance(self, repo_path: str, profile_name: str | None) -> str:
+        if self._repository_prompt_guidance_loader is None:
+            return ""
+        guidance = self._repository_prompt_guidance_loader.load(repo_path, profile_name)
+        if guidance is None:
+            return ""
+        return self._truncate_content(guidance.to_prompt_block())

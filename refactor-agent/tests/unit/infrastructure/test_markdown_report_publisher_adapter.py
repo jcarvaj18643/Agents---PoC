@@ -106,6 +106,10 @@ class TestMarkdownReportPublisherAdapter:
                 remote_ref="origin/ticket123_refactor",
                 committed_files=("app.py",),
             ),
+            review_branch_validation_result=ValidationResult.safe(
+                executed_checks=["TEST:app.py -> pytest -q tests/test_app.py"],
+                summary="Generated branch validation passed.",
+            ),
             review_pull_request=PullRequestPublication(
                 number=99,
                 url="https://github.com/acme/refactor-agent/pull/99",
@@ -135,16 +139,18 @@ class TestMarkdownReportPublisherAdapter:
         assert "## Refactor Suggestions" in report_content
         assert "## Refactor Patch Preview" in report_content
         assert "## Review Branch Materialization" in report_content
+        assert "## Review Branch Validation" in report_content
         assert "## Review Pull Request" in report_content
         assert "## Pull Request Comment Publication" in report_content
         assert "**Run status:** `completed`" in report_content
-        assert "**Governance status:** `deferred-to-ci`" in report_content
+        assert "**Governance status:** `eligible`" in report_content
         assert "**Status:** skipped" in report_content
         assert "deferred to CI/CD" in report_content
         assert "Extract helper" in report_content
         assert "status=`validated`" in report_content
         assert "ticket123_refactor" in report_content
         assert "origin/ticket123_refactor" in report_content
+        assert "Generated branch validation passed." in report_content
         assert "https://github.com/acme/refactor-agent/pull/99" in report_content
         assert "issuecomment-1234" in report_content
         assert "Changed hunk focus" in report_content

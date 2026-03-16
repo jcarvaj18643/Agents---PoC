@@ -32,8 +32,11 @@ class TestLlmDocumentationGeneratorAdapter:
         assert adapter.last_execution_mode == "fallback local"
 
     def test_uses_openai_response_when_available(self) -> None:
+        captured_inputs: list[str] = []
+
         class _FakeResponses:
-            def create(self, **_: object) -> SimpleNamespace:
+            def create(self, **kwargs: object) -> SimpleNamespace:
+                captured_inputs.append(str(kwargs.get("input", "")))
                 return SimpleNamespace(
                     output_text="# Summary\n\nUpdated docs for the changed service.",
                     usage=SimpleNamespace(total_tokens=123),
@@ -50,6 +53,7 @@ class TestLlmDocumentationGeneratorAdapter:
                 context_snapshot="def run():\n    return 1\n",
                 symbol_context="def run():\n    return 1\n",
                 full_file_context="def run():\n    return 1\n",
+                repository_guidance="Architecture: Hexagonal\nLayer conventions:\n- persistence folder is src/Persistence",
                 impacted_symbol=ChangedSymbol("run", "function", ChangeType.MODIFIED, "app/service.py", 1, 2),
             )
         ]
@@ -68,4 +72,6 @@ class TestLlmDocumentationGeneratorAdapter:
         assert len(artifacts) == 1
         assert artifacts[0].generated_content.startswith("# Summary")
         assert artifacts[0].tokens_used == 123
+        assert "Repository guidance:" in captured_inputs[0]
+        assert "Architecture: Hexagonal" in captured_inputs[0]
         assert adapter.last_execution_mode == "LLM real"

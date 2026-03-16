@@ -89,6 +89,7 @@ class TestGitHubActionsRunner:
         assert "deferred-to-ci" in output_content
         assert "report_path<<__GH_EOF__" in output_content
         assert "/tmp/report.md" in output_content
+        assert "review_branch_validation_status<<__GH_EOF__" in output_content
         assert "review_pull_request_url<<__GH_EOF__" in output_content
         assert "pull_request_comment_url<<__GH_EOF__" in output_content
         assert "## Engineering Governance Agent" in summary_content
@@ -97,6 +98,7 @@ class TestGitHubActionsRunner:
         assert "Diff refs: `base-sha-123` -> `head-sha-456`" in summary_content
         assert "Run status: `completed`" in summary_content
         assert "Governance status: `deferred-to-ci`" in summary_content
+        assert "Review branch validation: `not-run`" in summary_content
         assert fake_agent.requests[0].pull_request_number == 123
         assert fake_agent.requests[0].repository == "acme/refactor-agent"
         assert fake_agent.requests[0].base_branch == "main"
@@ -104,6 +106,35 @@ class TestGitHubActionsRunner:
         assert fake_agent.requests[0].publish_pr_comment is True
         assert fake_agent.requests[0].base_ref == "base-sha-123"
         assert fake_agent.requests[0].head_ref == "head-sha-456"
+
+    def test_enables_branch_promotion_flags_from_environment(self, monkeypatch, tmp_path: Path) -> None:
+        fake_agent = _FakeGovernanceAgent(AgentRunResponse(success=True, result=AgentRunResult(
+            run_id="run-456",
+            success=True,
+            completed_at=datetime.now(timezone.utc),
+            validation_result=ValidationResult.safe(),
+        )))
+        fake_container = _FakeContainer(fake_agent, _FakeGitHubContext())
+
+        monkeypatch.setattr(runner, "build_container", lambda: fake_container)
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.setenv("GOVERNANCE_CREATE_REVIEW_PULL_REQUEST", "true")
+        monkeypatch.setenv("GOVERNANCE_REVIEW_BRANCH_NAME", "ticket123_refactor")
+        monkeypatch.setenv("GOVERNANCE_REVIEW_REMOTE_NAME", "upstream")
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(SystemExit) as exit_info:
+            runner.main()
+
+        assert exit_info.value.code == 0
+        request = fake_agent.requests[0]
+        assert request.publish_review_branch is True
+        assert request.push_review_branch is True
+        assert request.validate_review_branch is True
+        assert request.create_review_pull_request is True
+        assert request.review_branch_name == "ticket123_refactor"
+        assert request.review_remote_name == "upstream"
 
     def test_fails_fast_when_openai_secret_is_missing_in_github_actions(self, monkeypatch, tmp_path: Path) -> None:
         output_path = tmp_path / "github_output.txt"

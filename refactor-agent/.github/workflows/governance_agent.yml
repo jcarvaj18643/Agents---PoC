@@ -13,10 +13,39 @@ on:
         description: "Head git ref containing the changes"
         required: false
         default: "features/hexagonal-llm-migration/main"
+      publish_review_branch:
+        description: "Materialize a review branch from approved patches"
+        required: false
+        type: boolean
+        default: false
+      push_review_branch:
+        description: "Push the generated review branch to origin"
+        required: false
+        type: boolean
+        default: false
+      validate_review_branch:
+        description: "Run validation checks against the generated review branch"
+        required: false
+        type: boolean
+        default: false
+      create_review_pull_request:
+        description: "Create or reuse a PR from the validated review branch"
+        required: false
+        type: boolean
+        default: false
+      review_branch_name:
+        description: "Optional explicit review branch name"
+        required: false
+        default: ""
+      review_remote_name:
+        description: "Remote used when pushing the review branch"
+        required: false
+        default: "origin"
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   governance:
@@ -48,6 +77,12 @@ jobs:
           GITHUB_BASE_BRANCH: ${{ github.event.pull_request.base.ref || inputs.base_ref || github.event.repository.default_branch }}
           GITHUB_HEAD_BRANCH: ${{ github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
           GITHUB_PR_NUMBER: ${{ github.event.number }}
+          GOVERNANCE_PUBLISH_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_review_branch || 'false' }}
+          GOVERNANCE_PUSH_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.push_review_branch || 'false' }}
+          GOVERNANCE_VALIDATE_REVIEW_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_review_branch || 'false' }}
+          GOVERNANCE_CREATE_REVIEW_PULL_REQUEST: ${{ github.event_name == 'workflow_dispatch' && inputs.create_review_pull_request || 'false' }}
+          GOVERNANCE_REVIEW_BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.review_branch_name || '' }}
+          GOVERNANCE_REVIEW_REMOTE_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.review_remote_name || 'origin' }}
           DRY_RUN: "false"
           REPORTS_DIR: "${{ github.workspace }}/reports"
         run: python -m app.entrypoints.github_actions.runner
@@ -59,6 +94,8 @@ jobs:
           echo "governance_run_id=${{ steps.run_governance.outputs.run_id }}"
           echo "governance_status=${{ steps.run_governance.outputs.governance_status }}"
           echo "validation_status=${{ steps.run_governance.outputs.validation_status }}"
+          echo "review_branch_validation_status=${{ steps.run_governance.outputs.review_branch_validation_status }}"
+          echo "review_branch_name=${{ steps.run_governance.outputs.review_branch_name }}"
           echo "report_path=${{ steps.run_governance.outputs.report_path }}"
 
       - name: Upload report artifact

@@ -9,6 +9,7 @@ from typing import List
 
 from app.application.dto.agent_run_request import AgentRunRequest
 from app.application.orchestrators.run_engineering_governance_agent import (
+    ReviewAutomationFlow,
     RunEngineeringGovernanceAgentUseCase,
 )
 from app.domain.entities.changed_file import ChangedFile
@@ -62,7 +63,7 @@ class _FakeLoadPolicies:
 
 
 class _FakeBuildContext:
-    def execute(self, scope: CodeScope, repo_path: str) -> List[ChangedFile]:
+    def execute(self, scope: CodeScope, repo_path: str, profile_name: str | None = None) -> List[ChangedFile]:
         return list(scope.changed_files)
 
 
@@ -134,6 +135,19 @@ class _FakeMaterializeReviewBranch:
         )
 
 
+class _FakeValidateReviewBranch:
+    def __init__(self, result: ValidationResult | None = None) -> None:
+        self._result = result or ValidationResult.safe(executed_checks=["TEST:repo-wide -> pytest -q"])
+        self.calls: list[tuple[bool, str | None, str]] = []
+
+    def execute(self, review_branch, repo_path, profile, changed_files, enabled: bool):  # type: ignore[no-untyped-def]
+        branch_name = review_branch.branch_name if review_branch is not None else None
+        self.calls.append((enabled, branch_name, repo_path))
+        if not enabled or review_branch is None:
+            return None
+        return self._result
+
+
 class _FakeCreateReviewPullRequest:
     def __init__(self) -> None:
         self.calls: list[tuple[bool, str | None, str | None, str | None]] = []
@@ -171,9 +185,16 @@ def _build_orchestrator(
     scope: CodeScope,
     materialize_patches: _FakeMaterializePatches | None = None,
     materialize_review_branch: _FakeMaterializeReviewBranch | None = None,
+    validate_review_branch: _FakeValidateReviewBranch | None = None,
     create_review_pull_request: _FakeCreateReviewPullRequest | None = None,
     publish_pull_request_comment: _FakePublishPullRequestComment | None = None,
 ) -> RunEngineeringGovernanceAgentUseCase:
+    review_flow = ReviewAutomationFlow(
+        materialize_review_branch=materialize_review_branch or _FakeMaterializeReviewBranch(),  # type: ignore[arg-type]
+        validate_review_branch=validate_review_branch or _FakeValidateReviewBranch(),  # type: ignore[arg-type]
+        create_review_pull_request=create_review_pull_request or _FakeCreateReviewPullRequest(),  # type: ignore[arg-type]
+        publish_pull_request_comment=publish_pull_request_comment or _FakePublishPullRequestComment(),  # type: ignore[arg-type]
+    )
     return RunEngineeringGovernanceAgentUseCase(
         analyze_diff=_FakeAnalyzeDiff(scope),  # type: ignore[arg-type]
         detect_profile=_FakeDetectProfile(),  # type: ignore[arg-type]
@@ -184,9 +205,7 @@ def _build_orchestrator(
         generate_refactors=_FakeGenerateRefactors(),  # type: ignore[arg-type]
         validate_safety=_FakeValidateSafety(),  # type: ignore[arg-type]
         materialize_patches=materialize_patches or _FakeMaterializePatches(),  # type: ignore[arg-type]
-        materialize_review_branch=materialize_review_branch or _FakeMaterializeReviewBranch(),  # type: ignore[arg-type]
-        create_review_pull_request=create_review_pull_request or _FakeCreateReviewPullRequest(),  # type: ignore[arg-type]
-        publish_pull_request_comment=publish_pull_request_comment or _FakePublishPullRequestComment(),  # type: ignore[arg-type]
+        review_flow=review_flow,
         publish_report=_FakePublishReport(),  # type: ignore[arg-type]
     )
 
@@ -201,6 +220,7 @@ def _make_request(**overrides: object) -> AgentRunRequest:
         "dry_run": True,
         "publish_review_branch": False,
         "push_review_branch": False,
+        "validate_review_branch": False,
         "review_remote_name": "origin",
         "publish_pr_comment": False,
         "create_review_pull_request": False,
@@ -289,9 +309,12 @@ class TestRunEngineeringGovernanceAgentUseCase:
             generate_refactors=_FakeGenerateRefactors(),  # type: ignore[arg-type]
             validate_safety=_FakeValidateSafety(),  # type: ignore[arg-type]
             materialize_patches=_FakeMaterializePatches(),  # type: ignore[arg-type]
-            materialize_review_branch=_FakeMaterializeReviewBranch(),  # type: ignore[arg-type]
-            create_review_pull_request=_FakeCreateReviewPullRequest(),  # type: ignore[arg-type]
-            publish_pull_request_comment=_FakePublishPullRequestComment(),  # type: ignore[arg-type]
+            review_flow=ReviewAutomationFlow(
+                materialize_review_branch=_FakeMaterializeReviewBranch(),  # type: ignore[arg-type]
+                validate_review_branch=_FakeValidateReviewBranch(),  # type: ignore[arg-type]
+                create_review_pull_request=_FakeCreateReviewPullRequest(),  # type: ignore[arg-type]
+                publish_pull_request_comment=_FakePublishPullRequestComment(),  # type: ignore[arg-type]
+            ),
             publish_report=_FakePublishReport(),  # type: ignore[arg-type]
         )
         response = agent.run(_make_request())
@@ -363,9 +386,11 @@ class TestRunEngineeringGovernanceAgentUseCase:
             ],
         )
         create_review_pull_request = _FakeCreateReviewPullRequest()
+        validate_review_branch = _FakeValidateReviewBranch()
         publish_pull_request_comment = _FakePublishPullRequestComment()
         agent = _build_orchestrator(
             scope,
+            validate_review_branch=validate_review_branch,
             create_review_pull_request=create_review_pull_request,
             publish_pull_request_comment=publish_pull_request_comment,
         )
@@ -376,6 +401,7 @@ class TestRunEngineeringGovernanceAgentUseCase:
                 repository="acme/refactor-agent",
                 base_branch="main",
                 publish_review_branch=True,
+                validate_review_branch=True,
                 create_review_pull_request=True,
                 publish_pr_comment=True,
                 review_branch_name="ticket123_refactor",
@@ -383,6 +409,9 @@ class TestRunEngineeringGovernanceAgentUseCase:
         )
 
         assert response.success is True
+        assert validate_review_branch.calls == [
+            (True, "ticket123_refactor", "/repo")
+        ]
         assert create_review_pull_request.calls == [
             (True, "acme/refactor-agent", "main", "ticket123_refactor")
         ]
@@ -392,3 +421,45 @@ class TestRunEngineeringGovernanceAgentUseCase:
         assert response.result is not None
         assert response.result.review_pull_request is not None
         assert response.result.pull_request_comment is not None
+
+    def test_blocks_review_pull_request_when_review_branch_validation_fails(self) -> None:
+        scope = CodeScope(
+            changed_files=[
+                ChangedFile(
+                    path=Path("app/foo.py"),
+                    change_type=ChangeType.ADDED,
+                    language=Language.PYTHON,
+                    diff_content="",
+                )
+            ],
+        )
+        validate_review_branch = _FakeValidateReviewBranch(
+            ValidationResult.unsafe(summary="Generated branch validation failed.")
+        )
+        create_review_pull_request = _FakeCreateReviewPullRequest()
+        agent = _build_orchestrator(
+            scope,
+            validate_review_branch=validate_review_branch,
+            create_review_pull_request=create_review_pull_request,
+        )
+
+        response = agent.run(
+            _make_request(
+                dry_run=False,
+                repository="acme/refactor-agent",
+                base_branch="main",
+                publish_review_branch=True,
+                validate_review_branch=True,
+                create_review_pull_request=True,
+                review_branch_name="ticket123_refactor",
+            )
+        )
+
+        assert response.success is True
+        assert create_review_pull_request.calls == [
+            (False, "acme/refactor-agent", "main", "ticket123_refactor")
+        ]
+        assert response.result is not None
+        assert response.result.review_pull_request is None
+        assert response.result.review_branch_validation_result is not None
+        assert response.result.review_branch_validation_result.passed is False

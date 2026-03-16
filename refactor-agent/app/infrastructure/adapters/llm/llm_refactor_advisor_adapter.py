@@ -135,6 +135,8 @@ class LlmRefactorAdvisorAdapter(LlmRefactorAdvisorPort):
                 "Only suggest refactors justified by the changed code and nearby structural context.",
                 "Do not suggest broad rewrites or changes outside the changed file.",
                 "Only include suggested_code when you can express a concrete local replacement for the anchor in the same file.",
+                "Repository guidance:",
+                changed_file.repository_guidance or "No repository-specific guidance provided.",
                 f"Policy id: {policy.id}",
                 f"Policy name: {policy.name}",
                 f"Policy description: {policy.description}",

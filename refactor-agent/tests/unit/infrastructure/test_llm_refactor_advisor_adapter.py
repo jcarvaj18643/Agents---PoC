@@ -194,8 +194,11 @@ class TestLlmRefactorAdvisorAdapter:
         assert repeated_logic.impacted_symbol == "second"
 
     def test_uses_openai_response_when_available(self) -> None:
+        captured_inputs: list[str] = []
+
         class _FakeResponses:
-            def create(self, **_: object) -> SimpleNamespace:
+            def create(self, **kwargs: object) -> SimpleNamespace:
+                captured_inputs.append(str(kwargs.get("input", "")))
                 return SimpleNamespace(
                     output_text='{"suggestions":[{"title":"Extract query mapper","description":"Split mapping into a local helper.","rationale":"The changed method now mixes orchestration and mapping.","severity":"warning","change_anchor":"return mapper.Map(result)","suggested_code":"mapped = mapper.Map(result)\\nreturn mapped"}]}'
                 )
@@ -213,6 +216,7 @@ class TestLlmRefactorAdvisorAdapter:
                 context_snapshot="result = mapper.Map(source)\nreturn mapper.Map(result)\n",
                 symbol_context="def run():\n    result = mapper.Map(source)\n    return mapper.Map(result)\n",
                 full_file_context="def run():\n    result = mapper.Map(source)\n    return mapper.Map(result)\n",
+                repository_guidance="Architecture: Hexagonal\nRefactor guardrails:\n- Repositories stay in Infrastructure",
                 impacted_symbol=ChangedSymbol("run", "function", ChangeType.MODIFIED, "app/service.py", 1, 3),
             )
         ]
@@ -233,4 +237,6 @@ class TestLlmRefactorAdvisorAdapter:
         assert suggestions[0].severity == Severity.WARNING
         assert suggestions[0].change_anchor == "return mapper.Map(result)"
         assert suggestions[0].suggested_code == "mapped = mapper.Map(result)\nreturn mapped"
+        assert "Repository guidance:" in captured_inputs[0]
+        assert "Repositories stay in Infrastructure" in captured_inputs[0]
         assert adapter.last_execution_mode == "LLM real"

@@ -60,6 +60,7 @@ class MarkdownReportPublisherAdapter(ReportPublisherPort):
         lines += self._render_refactor_suggestions(result)
         lines += self._render_refactor_patches(result)
         lines += self._render_review_branch(result)
+        lines += self._render_review_branch_validation(result)
         lines += self._render_review_pull_request(result)
         lines += self._render_pull_request_comment(result)
         lines += self._render_validation(result)
@@ -263,6 +264,38 @@ class MarkdownReportPublisherAdapter(ReportPublisherPort):
             f"- Created: `{result.review_pull_request.created}`",
             "",
         ]
+        return lines
+
+    def _render_review_branch_validation(self, result: AgentRunResult) -> list[str]:
+        lines = [
+            "## Review Branch Validation",
+            "",
+        ]
+        validation_result = result.review_branch_validation_result
+        if validation_result is None:
+            lines.append("_No review-branch validation was executed for this run._")
+            lines.append("")
+            return lines
+
+        lines += [
+            f"**Status:** {validation_result.status.value}",
+            f"**Promotion:** {self._render_validation_eligibility(validation_result)}",
+        ]
+        if validation_result.summary:
+            lines.append(f"**Summary:** {validation_result.summary}")
+        if validation_result.issues:
+            lines += ["", "| Code | Severity | Message |", "| --- | --- | --- |"]
+            lines += [
+                f"| `{issue.code}` | {issue.severity.value} | {issue.message} |"
+                for issue in validation_result.issues
+            ]
+        if validation_result.executed_checks:
+            lines += ["", "**Executed checks:**"]
+            lines += [f"- `{check}`" for check in validation_result.executed_checks]
+        if validation_result.planned_checks:
+            lines += ["", "**Planned checks:**"]
+            lines += [f"- `{check}`" for check in validation_result.planned_checks]
+        lines.append("")
         return lines
 
     def _render_pull_request_comment(self, result: AgentRunResult) -> list[str]:

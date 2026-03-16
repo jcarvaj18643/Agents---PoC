@@ -8,6 +8,9 @@ from app.domain.entities.code_scope import CodeScope
 from app.domain.enums.change_type import ChangeType
 from app.domain.enums.language import Language
 from app.infrastructure.adapters.filesystem.filesystem_adapter import FileSystemAdapter
+from app.infrastructure.adapters.policy_loader.repository_prompt_guidance_loader_adapter import (
+    RepositoryPromptGuidanceLoaderAdapter,
+)
 from app.infrastructure.adapters.parser.heuristic_symbol_context_resolver_adapter import (
     HeuristicSymbolContextResolverAdapter,
 )
@@ -273,3 +276,37 @@ class TestBuildCodeContextUseCase:
         assert files[0].impacted_symbol is not None
         assert files[0].impacted_symbol.name == "second"
         assert files[0].changed_line_numbers == (5,)
+
+    def test_attaches_repository_prompt_guidance_when_configuration_file_exists(self, tmp_path: Path) -> None:
+        (tmp_path / "repository-guidance.yaml").write_text(
+            "repository:\n"
+            "  name: rag_system\n"
+            "  framework: .NET 8\n"
+            "  architecture: Hexagonal\n"
+            "layers:\n"
+            "  - name: persistence\n"
+            "    path: src/Persistence\n"
+            "    responsibility: adapters and repositories\n",
+            encoding="utf-8",
+        )
+        repo_file = tmp_path / "service.py"
+        repo_file.write_text("def run() -> int:\n    return 1\n", encoding="utf-8")
+        scope = CodeScope(
+            changed_files=[
+                ChangedFile(
+                    path=Path("service.py"),
+                    change_type=ChangeType.MODIFIED,
+                    language=Language.PYTHON,
+                    diff_content="diff --git a/service.py b/service.py",
+                )
+            ]
+        )
+
+        files = BuildCodeContextUseCase(
+            FileSystemAdapter(),
+            repository_prompt_guidance_loader=RepositoryPromptGuidanceLoaderAdapter(),
+        ).execute(scope, str(tmp_path), "python")
+
+        assert "Repository name: rag_system" in files[0].repository_guidance
+        assert "Framework or platform: .NET 8" in files[0].repository_guidance
+        assert "persistence: path=src/Persistence; responsibility=adapters and repositories" in files[0].repository_guidance

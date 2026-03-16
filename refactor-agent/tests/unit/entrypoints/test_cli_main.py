@@ -148,6 +148,7 @@ class TestCliArgumentParsing:
                 "HEAD",
                 "--publish-review-branch",
                 "--push-review-branch",
+                "--validate-review-branch",
                 "--review-branch-name",
                 "ticket123_refactor",
                 "--review-remote-name",
@@ -159,6 +160,7 @@ class TestCliArgumentParsing:
 
         assert args.publish_review_branch is True
         assert args.push_review_branch is True
+        assert args.validate_review_branch is True
         assert args.review_branch_name == "ticket123_refactor"
         assert args.review_remote_name == "upstream"
 

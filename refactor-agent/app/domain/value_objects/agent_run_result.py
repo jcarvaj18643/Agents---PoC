@@ -36,6 +36,7 @@ class AgentRunResult:
     refactor_suggestions: List[RefactorSuggestion] = field(default_factory=list)
     refactor_patches: List[RefactorPatch] = field(default_factory=list)
     review_branch: Optional[ReviewBranchMaterialization] = None
+    review_branch_validation_result: Optional[ValidationResult] = None
     review_pull_request: Optional[PullRequestPublication] = None
     pull_request_comment: Optional[PullRequestCommentPublication] = None
     llm_stage_modes: dict[str, str] = field(default_factory=dict)
@@ -51,6 +52,12 @@ class AgentRunResult:
     def governance_status(self) -> str:
         if not self.success:
             return "failed"
+        if self.review_branch_validation_result is not None:
+            if self.review_branch_validation_result.passed:
+                return "eligible"
+            if self.review_branch_validation_result.deferred:
+                return "deferred-to-ci"
+            return "blocked"
         if self.validation_result is None:
             return "not-evaluated"
         if self.validation_result.status.value == "safe":

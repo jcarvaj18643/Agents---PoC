@@ -31,6 +31,13 @@ logger = get_logger("github_actions_runner")
 _STEP_SUMMARY_TITLE = "## Engineering Governance Agent"
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _append_step_summary(lines: list[str]) -> None:
     summary_path = os.getenv("GITHUB_STEP_SUMMARY")
     if not summary_path:
@@ -78,6 +85,11 @@ def _publish_success_metadata(request: AgentRunRequest, response) -> None:  # ty
         return
 
     validation_status = result.validation_result.status.value if result.validation_result else "not-evaluated"
+    review_branch_validation_status = (
+        result.review_branch_validation_result.status.value
+        if result.review_branch_validation_result
+        else "not-run"
+    )
     report_path = result.report_path or ""
     _write_github_outputs(
         {
@@ -86,6 +98,8 @@ def _publish_success_metadata(request: AgentRunRequest, response) -> None:  # ty
             "report_path": report_path,
             "governance_status": result.governance_status,
             "validation_status": validation_status,
+            "review_branch_validation_status": review_branch_validation_status,
+            "review_branch_name": result.review_branch.branch_name if result.review_branch else "",
             "review_pull_request_url": result.review_pull_request.url if result.review_pull_request else "",
             "pull_request_comment_url": result.pull_request_comment.url if result.pull_request_comment else "",
         }
@@ -101,6 +115,7 @@ def _publish_success_metadata(request: AgentRunRequest, response) -> None:  # ty
             f"- Run status: `{result.execution_status}`",
             f"- Governance status: `{result.governance_status}`",
             f"- Validation status: `{validation_status}`",
+            f"- Review branch validation: `{review_branch_validation_status}`",
             f"- Report: `{report_path or 'not-published'}`",
             f"- Review PR: `{result.review_pull_request.url if result.review_pull_request else 'not-created'}`",
             f"- PR comment: `{result.pull_request_comment.url if result.pull_request_comment else 'not-published'}`",
@@ -135,6 +150,10 @@ def main() -> None:
 
     container = build_container()
     ctx = container.github_context_provider
+    requested_create_review_pull_request = _env_flag("GOVERNANCE_CREATE_REVIEW_PULL_REQUEST")
+    requested_validate_review_branch = _env_flag("GOVERNANCE_VALIDATE_REVIEW_BRANCH") or requested_create_review_pull_request
+    requested_publish_review_branch = _env_flag("GOVERNANCE_PUBLISH_REVIEW_BRANCH") or requested_validate_review_branch
+    requested_push_review_branch = _env_flag("GOVERNANCE_PUSH_REVIEW_BRANCH") or requested_create_review_pull_request
 
     request = AgentRunRequest(
         repo_path=str(Path.cwd()),
@@ -144,18 +163,21 @@ def main() -> None:
         triggered_by="github_actions",
         dry_run=False,
         apply_refactors=False,
-        publish_review_branch=False,
-        push_review_branch=False,
+        publish_review_branch=requested_publish_review_branch,
+        push_review_branch=requested_push_review_branch,
+        validate_review_branch=requested_validate_review_branch,
+        review_branch_name=os.getenv("GOVERNANCE_REVIEW_BRANCH_NAME") or None,
+        review_remote_name=os.getenv("GOVERNANCE_REVIEW_REMOTE_NAME", "origin"),
         repository=ctx.get_repository(),
         base_branch=ctx.get_base_branch(),
         head_branch=ctx.get_head_branch(),
         publish_pr_comment=ctx.get_pull_request_number() is not None,
-        create_review_pull_request=False,
+        create_review_pull_request=requested_create_review_pull_request,
         pull_request_number=ctx.get_pull_request_number(),
     )
 
     logger.info(
-        "GitHub Actions run [run_id=%s, repo=%s, target_branch=%s, current_branch=%s, base_ref=%s, head_ref=%s, pr=%s]",
+        "GitHub Actions run [run_id=%s, repo=%s, target_branch=%s, current_branch=%s, base_ref=%s, head_ref=%s, pr=%s, publish_review_branch=%s, push_review_branch=%s, validate_review_branch=%s, create_review_pull_request=%s]",
         request.run_id,
         ctx.get_repository(),
         ctx.get_base_branch(),
@@ -163,6 +185,10 @@ def main() -> None:
         request.base_ref,
         request.head_ref,
         request.pull_request_number,
+        request.publish_review_branch,
+        request.push_review_branch,
+        request.validate_review_branch,
+        request.create_review_pull_request,
     )
 
     response = container.governance_agent.run(request)

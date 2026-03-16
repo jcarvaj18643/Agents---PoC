@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.application.orchestrators.run_engineering_governance_agent import (
+    ReviewAutomationFlow,
     RunEngineeringGovernanceAgentUseCase,
 )
 from app.application.policies.refactor_safety_policy import RefactorSafetyPolicy
@@ -31,6 +32,9 @@ from app.application.use_cases.materialize_refactor_patches import MaterializeRe
 from app.application.use_cases.materialize_review_branch import (
     MaterializeReviewBranchUseCase,
 )
+from app.application.use_cases.validate_review_branch import (
+    ValidateReviewBranchUseCase,
+)
 from app.application.use_cases.publish_pull_request_comment import (
     PublishPullRequestCommentUseCase,
 )
@@ -43,6 +47,9 @@ from app.infrastructure.adapters.filesystem.project_structure_reader_adapter imp
 from app.infrastructure.adapters.git.git_diff_reader_adapter import GitDiffReaderAdapter
 from app.infrastructure.adapters.git.review_branch_publisher_adapter import (
     GitReviewBranchPublisherAdapter,
+)
+from app.infrastructure.adapters.git.review_branch_validator_adapter import (
+    GitReviewBranchValidatorAdapter,
 )
 from app.infrastructure.adapters.github.github_context_provider_adapter import (
     GitHubContextProviderAdapter,
@@ -58,6 +65,9 @@ from app.infrastructure.adapters.llm.llm_documentation_generator_adapter import 
 )
 from app.infrastructure.adapters.llm.llm_refactor_advisor_adapter import (
     LlmRefactorAdvisorAdapter,
+)
+from app.infrastructure.adapters.policy_loader.repository_prompt_guidance_loader_adapter import (
+    RepositoryPromptGuidanceLoaderAdapter,
 )
 from app.infrastructure.adapters.policy_loader.yaml_policy_loader_adapter import (
     YamlPolicyLoaderAdapter,
@@ -128,6 +138,7 @@ def build_container() -> Container:
     )
     github_context_provider = GitHubContextProviderAdapter()
     policy_loader = YamlPolicyLoaderAdapter(policies_dir=policies_dir)
+    repository_prompt_guidance_loader = RepositoryPromptGuidanceLoaderAdapter()
     report_publisher = MarkdownReportPublisherAdapter(output_dir=reports_dir)
     symbol_context_resolver = HeuristicSymbolContextResolverAdapter()
     refactor_executor = FileSystemRefactorExecutorAdapter()
@@ -157,6 +168,16 @@ def build_container() -> Container:
         python_coverage_fail_under=settings.python_coverage_fail_under,
         impact_target_resolver=impact_target_resolver,
     )
+    review_branch_validation_runner = ProfileValidationRunnerAdapter(
+        lint_enabled=settings.enable_lint_validation,
+        coverage_enabled=settings.enable_coverage_validation,
+        execution_enabled=True,
+        python_coverage_fail_under=settings.python_coverage_fail_under,
+        impact_target_resolver=impact_target_resolver,
+    )
+    review_branch_validator = GitReviewBranchValidatorAdapter(
+        validation_runner=review_branch_validation_runner,
+    )
 
     # ── Use Cases ─────────────────────────────────────────────────────────────
     analyze_diff = AnalyzeDiffScopeUseCase(diff_reader=git_diff_reader)
@@ -166,6 +187,7 @@ def build_container() -> Container:
     build_context = BuildCodeContextUseCase(
         filesystem=filesystem,
         symbol_context_resolver=symbol_context_resolver,
+        repository_prompt_guidance_loader=repository_prompt_guidance_loader,
     )
     generate_docs = GenerateDocumentationUseCase(llm_doc_generator=llm_doc_generator)
     generate_refactors = GenerateRefactorSuggestionsUseCase(
@@ -181,6 +203,9 @@ def build_container() -> Container:
     materialize_review_branch = MaterializeReviewBranchUseCase(
         review_branch_publisher=review_branch_publisher,
     )
+    validate_review_branch = ValidateReviewBranchUseCase(
+        review_branch_validator=review_branch_validator,
+    )
     create_review_pull_request = CreateReviewPullRequestUseCase(
         pull_request_publisher=pull_request_publisher,
     )
@@ -188,6 +213,12 @@ def build_container() -> Container:
         pull_request_comment_publisher=pull_request_comment_publisher,
     )
     publish_report = PublishAgentReportUseCase(report_publisher=report_publisher)
+    review_flow = ReviewAutomationFlow(
+        materialize_review_branch=materialize_review_branch,
+        validate_review_branch=validate_review_branch,
+        create_review_pull_request=create_review_pull_request,
+        publish_pull_request_comment=publish_pull_request_comment,
+    )
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
     governance_agent = RunEngineeringGovernanceAgentUseCase(
@@ -200,9 +231,7 @@ def build_container() -> Container:
         generate_refactors=generate_refactors,
         validate_safety=validate_safety,
         materialize_patches=materialize_patches,
-        materialize_review_branch=materialize_review_branch,
-        create_review_pull_request=create_review_pull_request,
-        publish_pull_request_comment=publish_pull_request_comment,
+        review_flow=review_flow,
         publish_report=publish_report,
     )
 

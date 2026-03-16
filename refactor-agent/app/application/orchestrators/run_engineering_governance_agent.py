@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.application.dto.agent_run_request import AgentRunRequest
@@ -19,12 +20,23 @@ from app.application.use_cases.materialize_refactor_patches import MaterializeRe
 from app.application.use_cases.materialize_review_branch import (
     MaterializeReviewBranchUseCase,
 )
+from app.application.use_cases.validate_review_branch import (
+    ValidateReviewBranchUseCase,
+)
 from app.application.use_cases.publish_pull_request_comment import (
     PublishPullRequestCommentUseCase,
 )
 from app.application.use_cases.publish_agent_report import PublishAgentReportUseCase
 from app.application.use_cases.validate_refactor_safety import ValidateRefactorSafetyUseCase
 from app.domain.value_objects.agent_run_result import AgentRunResult
+
+
+@dataclass(frozen=True)
+class ReviewAutomationFlow:
+    materialize_review_branch: MaterializeReviewBranchUseCase
+    validate_review_branch: ValidateReviewBranchUseCase
+    create_review_pull_request: CreateReviewPullRequestUseCase
+    publish_pull_request_comment: PublishPullRequestCommentUseCase
 
 
 class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
@@ -57,9 +69,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
         generate_refactors: GenerateRefactorSuggestionsUseCase,
         validate_safety: ValidateRefactorSafetyUseCase,
         materialize_patches: MaterializeRefactorPatchesUseCase,
-        materialize_review_branch: MaterializeReviewBranchUseCase,
-        create_review_pull_request: CreateReviewPullRequestUseCase,
-        publish_pull_request_comment: PublishPullRequestCommentUseCase,
+        review_flow: ReviewAutomationFlow,
         publish_report: PublishAgentReportUseCase,
     ) -> None:
         self._analyze_diff = analyze_diff
@@ -71,9 +81,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
         self._generate_refactors = generate_refactors
         self._validate_safety = validate_safety
         self._materialize_patches = materialize_patches
-        self._materialize_review_branch = materialize_review_branch
-        self._create_review_pull_request = create_review_pull_request
-        self._publish_pull_request_comment = publish_pull_request_comment
+        self._review_flow = review_flow
         self._publish_report = publish_report
 
     def run(self, request: AgentRunRequest) -> AgentRunResponse:
@@ -111,7 +119,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
             policies = self._load_policies.execute(profile.name)
 
             # 5. Build enriched code context
-            files = self._build_context.execute(scope, request.repo_path)
+            files = self._build_context.execute(scope, request.repo_path, profile.name)
 
             # 6. Generate documentation artifacts
             doc_artifacts = self._generate_docs.execute(files, policies)
@@ -134,7 +142,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
                 apply_changes=request.apply_refactors,
             )
 
-            review_branch = self._materialize_review_branch.execute(
+            review_branch = self._review_flow.materialize_review_branch.execute(
                 patches,
                 request.repo_path,
                 request.head_ref,
@@ -145,11 +153,27 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
                 remote_name=request.review_remote_name,
             )
 
-            review_pull_request = self._create_review_pull_request.execute(
+            review_branch_validation = self._review_flow.validate_review_branch.execute(
+                review_branch,
+                request.repo_path,
+                profile,
+                files,
+                enabled=request.validate_review_branch,
+            )
+
+            review_pull_request_enabled = request.create_review_pull_request
+            if review_pull_request_enabled:
+                review_pull_request_enabled = (
+                    request.validate_review_branch
+                    and review_branch_validation is not None
+                    and review_branch_validation.passed
+                )
+
+            review_pull_request = self._review_flow.create_review_pull_request.execute(
                 review_branch,
                 request.repository,
                 request.base_branch,
-                enabled=request.create_review_pull_request,
+                enabled=review_pull_request_enabled,
             )
 
             # 9. Assemble result
@@ -164,6 +188,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
                 refactor_suggestions=suggestions,
                 refactor_patches=patches,
                 review_branch=review_branch,
+                review_branch_validation_result=review_branch_validation,
                 review_pull_request=review_pull_request,
                 llm_stage_modes={
                     "documentation": self._generate_docs.last_execution_mode,
@@ -180,7 +205,7 @@ class RunEngineeringGovernanceAgentUseCase(RunAgentPort):
             if target_pull_request_number is None and result.review_pull_request is not None:
                 target_pull_request_number = result.review_pull_request.number
 
-            result.pull_request_comment = self._publish_pull_request_comment.execute(
+            result.pull_request_comment = self._review_flow.publish_pull_request_comment.execute(
                 result,
                 request.repository,
                 target_pull_request_number,

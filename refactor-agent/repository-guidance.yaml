@@ -1,0 +1,57 @@
+version: "1.0.0"
+repository:
+  name: "refactor-agent"
+  framework: "Python 3.11"
+  architecture: "Hexagonal Architecture (Ports and Adapters)"
+  summary: "Preserve inward dependency flow and keep runtime orchestration thin while generating local, behavior-preserving refactors."
+
+design_principles:
+  - "Apply SOLID with explicit dependency inversion at composition boundaries."
+  - "Keep business rules in domain/application and external integrations in infrastructure."
+  - "Prefer small, reversible refactors anchored to the changed symbol or changed hunk."
+
+layers:
+  - name: "domain"
+    path: "app/domain"
+    responsibility: "Pure business entities, value objects, enums, and domain exceptions."
+    allowed_dependencies:
+      - "No infrastructure or framework imports."
+    forbidden_dependencies:
+      - "app/infrastructure"
+      - "framework SDKs"
+  - name: "application"
+    path: "app/application"
+    responsibility: "Use cases, policies, and outbound/inbound ports."
+    allowed_dependencies:
+      - "app/domain"
+    forbidden_dependencies:
+      - "Concrete infrastructure adapters"
+  - name: "infrastructure"
+    path: "app/infrastructure"
+    responsibility: "Adapters for git, filesystem, LLM, GitHub, and reporting integrations."
+    allowed_dependencies:
+      - "app/application"
+      - "app/domain"
+    forbidden_dependencies:
+      - "Embedding business rules that belong in domain/application"
+  - name: "entrypoints"
+    path: "app/entrypoints"
+    responsibility: "CLI and GitHub Actions orchestration only."
+    allowed_dependencies:
+      - "app/application"
+    forbidden_dependencies:
+      - "Business logic implementation"
+
+refactor_guardrails:
+  - "Do not move business logic into entrypoints, controllers, or workflow runners."
+  - "Do not introduce direct infrastructure dependencies into domain entities or use cases."
+  - "Prefer adapter extraction and port definition over inline external client creation."
+
+naming_conventions:
+  - "Ports live under app/application/ports."
+  - "Adapters live under app/infrastructure/adapters."
+  - "Composition root belongs in app/bootstrap/container.py."
+
+additional_instructions:
+  - "When a refactor touches public APIs, keep signatures stable unless the diff explicitly changes the contract."
+  - "When introducing abstractions, prefer repository-local names aligned with existing folders and modules."

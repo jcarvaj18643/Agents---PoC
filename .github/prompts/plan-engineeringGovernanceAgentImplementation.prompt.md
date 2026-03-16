@@ -149,7 +149,16 @@ Phase-by-Phase Plan
 - Example of what should work: a validated patch set is applied to a newly created branch like `ticket123_refactor`, committed with a structured message, pushed to remote, and reported back as ready for PR review.
 - What should NOT be attempted yet: automatic PR creation, automatic reviewer assignment, autonomous merge, or bypassing explicit branch naming and safety gates.
 
-15. Phase 9: PR Comment Integration and Production Hardening
+15. Phase 8.2: Branch Validation and Promotion Gate
+- Purpose: re-run the target repository validation suite against the materialized review branch before allowing PR promotion.
+- Why it belongs here: once a branch can be materialized and pushed, the next missing safety gate is proving that the generated code still passes the repo's real CI checks before the agent escalates it into a review PR.
+- Exact modules involved: app/application/ports/outbound/validation_runner_port.py, app/application/ports/outbound/review_branch_publisher_port.py, app/application/use_cases/materialize_review_branch.py, app/application/use_cases/validate_refactor_safety.py, app/infrastructure/adapters/validation/profile_validation_runner_adapter.py, app/entrypoints/github_actions/runner.py, .github/workflows/governance_agent.yml, plus a promotion-oriented use case or workflow gate that binds branch publication to post-branch validation outcomes.
+- Expected outputs/artifacts: explicit post-materialization validation status, targeted validation execution against the generated review branch, promotion/no-promotion decision data, CI-visible logs for branch validation, and a guarantee that PR creation is blocked when the generated branch fails required checks.
+- Validation strategy: temp-repo integration tests that materialize a branch and execute validation commands in the generated worktree, negative-path tests proving failed validation blocks PR promotion, workflow smoke tests proving the branch-validation job runs only after branch publication, and contract tests for promotion gating semantics.
+- Example of what should work: the agent materializes `ticket123_refactor`, pushes it, runs the impacted lint/test plan against that branch, and only marks the branch as eligible for PR creation when those checks pass.
+- What should NOT be attempted yet: direct autonomous merge, bypassing required tests, or treating branch creation alone as sufficient proof that the refactor is safe to propose.
+
+16. Phase 9: PR Comment Integration and Production Hardening
 - Purpose: close the feedback loop by surfacing results directly in code review.
 - Why it belongs here: review UX is important, but it should not arrive before core safety and correctness are established.
 - Exact modules involved: app/infrastructure/adapters/github/github_context_provider_adapter.py, app/infrastructure/adapters/reporting/markdown_report_publisher_adapter.py, .github/workflows/governance_agent.yml, app/application/orchestrators/run_engineering_governance_agent.py, plus new GitHub comment/review publisher adapters.
@@ -157,6 +166,15 @@ Phase-by-Phase Plan
 - Validation strategy: mocked GitHub API contract tests, manual tests on non-critical PRs, operational runbooks for failure scenarios.
 - Example of what should work: the system can either comment on an existing PR or create a PR from the previously published review branch, then add a scoped summary comment with links to the artifact and clear status of docs, suggestions, and validation.
 - What should NOT be attempted yet: autonomous merge or autonomous branch selection without explicit policy/configuration.
+
+17. Phase 10: Agent Cutoff for Repository Move
+- Purpose: declare the agent operationally ready to move from its development repository into the target repository where it will run in production.
+- Why it belongs here: once Phase 8.2 makes branch validation a mandatory promotion gate, the remaining work is no longer about deciding whether the refactor is safe, but about embedding the agent into the destination repository's CI/CD topology, dependency model, permissions, and operational ownership.
+- Exact modules involved: .github/workflows/governance_agent.yml, app/entrypoints/github_actions/runner.py, app/entrypoints/cli/main.py, app/infrastructure/config/settings.py, README.md, .env.example, plus the destination repository workflow that should invoke the agent after its existing unit-test workflow passes.
+- Expected outputs/artifacts: a destination-repo installation checklist, an agent-specific dependency installation path, repo-local workflow wiring in the target repository, a post-unit-tests job topology where the agent runs only after the repository test suite succeeds, documented required secrets/permissions, and a cutoff checklist certifying that review-branch validation is the mandatory gate before PR creation.
+- Validation strategy: manual dry-run and non-dry-run smoke tests inside the target repository, workflow_dispatch verification in the target repository, a full `unit-tests -> governance-agent -> branch-validation -> PR/comment` rehearsal in the target repo, PR comment idempotency verification from the target repository context, and proof that the agent can install its own dependencies without breaking the host repository environment.
+- Example of what should work: the agent codebase is embedded in `rag_system`, its own dependencies are installed in CI, the existing `unit-tests` workflow/job passes first, the agent then runs on the same checkout, materializes and validates a review branch, and only after that gate passes does it create or reuse a PR and publish the summary comment.
+- What should NOT be attempted yet: multi-repo distribution packaging, marketplace publication, bypassing the target repository's own test workflow, or allowing PR creation without the Phase 8.2 branch-validation gate.
 
 Detailed Deliverables Per Phase
 
@@ -174,7 +192,9 @@ Detailed Deliverables Per Phase
 - Phase 7 delivers operational CI value: hardened GitHub workflow, artifact-first visibility, better logs and failure surfaces.
 - Phase 8 delivers guarded mutation capability: patch generation, preview mode, apply toggle, sandbox execution and rollback tests.
 - Phase 8.1 delivers controlled review packaging: branch creation, commit/push orchestration, and review-ready branch publication under strict gates.
+- Phase 8.2 delivers promotion safety: post-branch validation execution, promotion gating, and explicit evidence that generated refactor branches pass the required checks before PR creation.
 - Phase 9 delivers review-loop integration: PR comments, annotations, idempotent updates, operational hardening.
+- Phase 10 delivers move readiness: cutoff checklist, target-repo installation path, repository-local workflow validation, post-unit-tests agent orchestration, and removal of source-repo coupling.
 
 Dependency Graph Between Phases
 
@@ -191,7 +211,9 @@ Dependency Graph Between Phases
 11. Phase 7 depends on Phases 3 through 6.4 being stable enough to run in CI.
 12. Phase 8 depends on Phases 6 and 6.4 being complete.
 13. Phase 8.1 depends on Phases 7 and 8.
-14. Phase 9 depends on Phase 7, and optionally Phase 8.1 if PR creation/comment flows need branch/apply outcomes.
+14. Phase 8.2 depends on Phase 8.1 and on validation execution being permitted for the generated branch context.
+15. Phase 9 depends on Phase 7, and on Phase 8.2 if PR creation should be gated by successful branch validation.
+16. Phase 10 depends on Phase 8.2 and Phase 9 and requires at least one successful end-to-end smoke test against the real target repository context with the agent running after the destination repository's own unit-test gate.
 
 Safe parallelism:
 1. Policy schema design can overlap with Phase 1 implementation.
@@ -214,7 +236,9 @@ Acceptance Criteria Per Phase
 - Phase 7: GitHub Actions runs reliably on PRs, artifacts upload consistently, missing configuration fails clearly.
 - Phase 8: patch previews are accurate, apply mode is opt-in, no patch touches files outside approved scope.
 - Phase 8.1: review branches are created deterministically, commits contain only approved refactor patches, pushes are explicit and auditable, and the resulting branch is ready for PR review.
+- Phase 8.2: generated review branches are revalidated with the intended impacted checks, failed validation blocks PR promotion, and successful validation is visible as explicit promotion evidence.
 - Phase 9: PR comments are idempotent or updateable, review visibility is sufficient, failures degrade safely.
+- Phase 10: the agent runs inside the target repository without source-repo-specific configuration, installs its own dependencies without destabilizing the host CI, executes only after the destination repository unit-test gate passes, uses Phase 8.2 as the mandatory PR-promotion gate, and has a cutoff checklist explicitly marking it ready to move.
 
 Technical Risks and Mitigations
 
@@ -304,6 +328,9 @@ Definition of MVP, V1, and V2
 - V2:
   everything in V1, plus optional patch generation, optional safe apply behind strict controls, PR comments and stronger operational telemetry.
 
+- V3:
+  everything in V2, plus branch-promotion validation, repository-move readiness, target-repo workflow installation after the host test gate, and a formal cutoff gate for production relocation.
+
 Recommended Testing Strategy by Phase
 
 - Phase 0: keep unit tests fast and hermetic around orchestrator, dry-run, and container wiring.
@@ -320,7 +347,9 @@ Recommended Testing Strategy by Phase
 - Phase 7: workflow smoke tests through manual dispatch and branch PRs.
 - Phase 8: sandbox patch application tests, rollback tests, scope-leak prevention tests.
 - Phase 8.1: temp-repo branch/push integration tests, commit-content assertions, remote-publish mocks, and failure recovery tests.
+- Phase 8.2: generated-branch validation tests, promotion-blocking negative tests, workflow-gate tests for sequential branch-then-validate execution, and manual smoke tests on non-critical generated branches.
 - Phase 9: GitHub API mock tests, idempotency tests, PR-creation contract tests, and operational smoke tests.
+- Phase 10: target-repo installation smoke tests, workflow-permission verification, dependency-isolation checks, post-unit-tests workflow sequencing tests, config portability checks, and at least one end-to-end run executed from the destination repository.
 
 Cross-phase rule:
 - Domain and application tests should remain hermetic.
