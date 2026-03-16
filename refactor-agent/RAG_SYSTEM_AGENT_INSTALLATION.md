@@ -29,6 +29,24 @@ tools/refactor-agent/requirements.txt
 tools/refactor-agent/app/entrypoints/github_actions/runner.py
 tools/refactor-agent/app/
 tools/refactor-agent/policies/
+tools/refactor-agent/prompt-guidance/
+```
+
+La carpeta `policies/` contiene politicas tecnicas por perfil para documentacion, scope y seguridad de refactor.
+
+La carpeta `prompt-guidance/` contiene la guia estructural del repositorio que se inyecta en el prompt del LLM, por ejemplo:
+
+- framework o plataforma principal
+- arquitectura esperada
+- principios de diseno
+- nombres de carpetas por capa
+- restricciones de dependencias entre capas
+- guardrails de refactor y naming conventions
+
+Archivo esperado por defecto:
+
+```text
+tools/refactor-agent/prompt-guidance/repository-guidance.yaml
 ```
 
 3. No modificar ni reemplazar el workflow actual `unit-tests`.
@@ -115,6 +133,28 @@ Resultado esperado:
 - materializa review branch
 - valida la review branch
 - solo si esa validacion pasa, crea o reutiliza PR y publica comentario
+
+11. Configurar la guia estructural del repo destino para el LLM.
+
+Crear o adaptar este archivo en `rag_system`:
+
+```text
+tools/refactor-agent/prompt-guidance/repository-guidance.yaml
+```
+
+Ese archivo no reemplaza `policies/`. Cumple otro rol: darle al LLM contexto arquitectonico y convenciones concretas del repo destino para que las sugerencias y refactors respeten tu estructura real.
+
+Ejemplos de contenido util:
+
+- `.NET 8` como framework
+- `Hexagonal Architecture` o `Clean Architecture`
+- carpeta de `Api`
+- carpeta de `Persistence`
+- carpeta de `Application`
+- carpeta de `Domain`
+- reglas de imports entre capas
+- principios SOLID esperados
+- restricciones para repositorios, handlers y servicios
 
 ## Los dos YAML estan duplicados?
 
