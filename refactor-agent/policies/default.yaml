@@ -1,0 +1,12 @@
+version: "1.0.0"
+policies:
+  - id: default-scope-governance
+    name: Default Scope Governance
+    description: Baseline policy for repositories without a specific profile.
+    applies_to:
+      - "*"
+    rules:
+      - type: scope
+        instruction: Restrict all analysis and outputs to the changed diff scope.
+      - type: reporting
+        instruction: Always explain which files entered scope and which were skipped.

@@ -1,0 +1,22 @@
+version: "1.0.0"
+policies:
+  - id: python-docstrings
+    name: Python Documentation Coverage
+    description: Require clear module/function documentation for changed Python code.
+    applies_to:
+      - "*.py"
+    rules:
+      - type: documentation
+        instruction: Add or improve concise docstrings for public modules, classes, and functions touched by the diff.
+      - type: scope
+        instruction: Never generate documentation outside the changed file scope.
+  - id: python-refactor-safety
+    name: Python Refactor Safety Baseline
+    description: Keep refactor recommendations small, explicit, and safe for Python projects.
+    applies_to:
+      - "*.py"
+    rules:
+      - type: refactor
+        instruction: Prefer local, behavior-preserving refactors in changed code only.
+      - type: validation
+        instruction: Require lint, tests, and type-checking before auto-apply is allowed.

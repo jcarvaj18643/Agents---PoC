@@ -101,6 +101,12 @@
       "query": "What could make USD/COP rise this week?",
       "decision": "al alza",
       "confidence": "high"
+    },
+    {
+      "timestamp": "2026-03-11T14:17:42.793089+00:00",
+      "query": "What could make USD/COP rise this week?",
+      "decision": "al alza",
+      "confidence": "high"
     }
   ]
 }

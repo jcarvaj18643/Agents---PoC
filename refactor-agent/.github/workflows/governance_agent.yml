@@ -1,0 +1,70 @@
+name: Engineering Governance Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base git ref to diff against"
+        required: false
+        default: "features/hexagonal-llm-migration/refactor-agent"
+      head_ref:
+        description: "Head git ref containing the changes"
+        required: false
+        default: "features/hexagonal-llm-migration/main"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  governance:
+    name: Run Engineering Governance Agent
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history required for accurate git diff
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run governance agent
+        id: run_governance
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_BASE_REF: ${{ github.event.pull_request.base.sha || inputs.base_ref || github.event.repository.default_branch }}
+          GITHUB_HEAD_REF: ${{ github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          GITHUB_BASE_BRANCH: ${{ github.event.pull_request.base.ref || inputs.base_ref || github.event.repository.default_branch }}
+          GITHUB_HEAD_BRANCH: ${{ github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.number }}
+          DRY_RUN: "false"
+          REPORTS_DIR: "${{ github.workspace }}/reports"
+        run: python -m app.entrypoints.github_actions.runner
+
+      - name: Log run outputs
+        if: always()
+        run: |
+          echo "governance_success=${{ steps.run_governance.outputs.success }}"
+          echo "governance_run_id=${{ steps.run_governance.outputs.run_id }}"
+          echo "governance_status=${{ steps.run_governance.outputs.governance_status }}"
+          echo "validation_status=${{ steps.run_governance.outputs.validation_status }}"
+          echo "report_path=${{ steps.run_governance.outputs.report_path }}"
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-report-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: ignore

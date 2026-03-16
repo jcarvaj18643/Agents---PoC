@@ -1,0 +1,25 @@
+version: "1.0.0"
+policies:
+  - id: angular-documentation
+    name: Angular Documentation Coverage
+    description: Require clear documentation for changed Angular services, components, and modules.
+    applies_to:
+      - "*.ts"
+      - "*.html"
+      - "*.scss"
+    rules:
+      - type: documentation
+        instruction: Document changed Angular components, inputs, outputs, and injected services.
+      - type: scope
+        instruction: Never analyze files outside the changed Angular diff scope.
+  - id: angular-refactor-safety
+    name: Angular Refactor Safety Baseline
+    description: Keep Angular refactor proposals focused on maintainability and template safety.
+    applies_to:
+      - "*.ts"
+      - "*.html"
+    rules:
+      - type: refactor
+        instruction: Prefer small, component-local refactors that preserve template bindings and public APIs.
+      - type: validation
+        instruction: Require lint and test validation before any apply mode is allowed.

@@ -1,0 +1,22 @@
+version: "1.0.0"
+policies:
+  - id: csharp-documentation
+    name: C# Documentation Coverage
+    description: Require concise XML-style or summary-oriented documentation guidance for changed C# code.
+    applies_to:
+      - "*.cs"
+    rules:
+      - type: documentation
+        instruction: Improve documentation for public classes, methods, and services touched by the diff.
+      - type: scope
+        instruction: Restrict all documentation and analysis to changed C# files only.
+  - id: csharp-refactor-safety
+    name: C# Refactor Safety Baseline
+    description: Keep C# refactor proposals small and behavior-preserving.
+    applies_to:
+      - "*.cs"
+    rules:
+      - type: refactor
+        instruction: Prefer local refactors that preserve public contracts unless explicitly allowed.
+      - type: validation
+        instruction: Require build and test validation before any apply mode is allowed.
