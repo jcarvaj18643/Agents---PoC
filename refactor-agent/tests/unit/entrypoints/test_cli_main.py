@@ -2,10 +2,79 @@
 
 import sys
 
+import pytest
+
+from app.entrypoints.cli import main as cli_main
 from app.entrypoints.cli.main import _parse_args
 
 
 class TestCliArgumentParsing:
+    def test_uses_env_refs_when_cli_params_are_missing(self, monkeypatch) -> None:
+        monkeypatch.setenv("GITHUB_BASE_REF", "env-base")
+        monkeypatch.setenv("GITHUB_HEAD_REF", "env-head")
+        monkeypatch.setenv("GITHUB_REPOSITORY", "env/repo")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                "--repo-path",
+                "/repo",
+            ],
+        )
+
+        args = _parse_args()
+
+        assert args.base_ref == "env-base"
+        assert args.head_ref == "env-head"
+        assert args.repository == "env/repo"
+
+    def test_prefers_cli_refs_over_env_values(self, monkeypatch) -> None:
+        monkeypatch.setenv("GITHUB_BASE_REF", "env-base")
+        monkeypatch.setenv("GITHUB_HEAD_REF", "env-head")
+        monkeypatch.setenv("GITHUB_REPOSITORY", "env/repo")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                "--repo-path",
+                "/repo",
+                "--base-ref",
+                "cli-base",
+                "--head-ref",
+                "cli-head",
+                "--repository",
+                "cli/repo",
+            ],
+        )
+
+        args = _parse_args()
+
+        assert args.base_ref == "cli-base"
+        assert args.head_ref == "cli-head"
+        assert args.repository == "cli/repo"
+
+    def test_fails_when_refs_are_missing_in_cli_and_env(self, monkeypatch) -> None:
+        class _EmptySettings:
+            github_base_ref = None
+            github_head_ref = None
+            github_repository = None
+
+        monkeypatch.setattr(cli_main.Settings, "from_env", classmethod(lambda cls: _EmptySettings()))
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                "--repo-path",
+                "/repo",
+            ],
+        )
+
+        with pytest.raises(SystemExit):
+            _parse_args()
+
     def test_defaults_to_dry_run(self, monkeypatch) -> None:
         monkeypatch.setattr(
             sys,

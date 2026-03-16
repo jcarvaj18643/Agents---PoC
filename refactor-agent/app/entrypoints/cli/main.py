@@ -20,12 +20,14 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from app.application.dto.agent_run_request import AgentRunRequest  # noqa: E402
 from app.bootstrap.container import build_container  # noqa: E402
+from app.infrastructure.config.settings import Settings  # noqa: E402
 from app.infrastructure.logging.console_logger import get_logger  # noqa: E402
 
 logger = get_logger("cli")
 
 
 def _parse_args() -> argparse.Namespace:
+    settings = Settings.from_env()
     parser = argparse.ArgumentParser(
         description="Engineering Governance Agent — local CLI runner",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -37,12 +39,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-ref",
-        required=True,
+        default=None,
         help="Base git ref to diff against (e.g. 'main', 'origin/main')",
     )
     parser.add_argument(
         "--head-ref",
-        required=True,
+        default=None,
         help="Head git ref representing the changes (e.g. 'HEAD', branch name, or 'WORKTREE' for local uncommitted changes)",
     )
     parser.add_argument(
@@ -96,7 +98,21 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="GitHub repository in owner/name format, required for PR creation or comment publication",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    args.base_ref = args.base_ref or settings.github_base_ref
+    args.head_ref = args.head_ref or settings.github_head_ref
+    args.repository = args.repository or settings.github_repository
+
+    missing_arguments: list[str] = []
+    if not args.base_ref:
+        missing_arguments.append("--base-ref or GITHUB_BASE_REF")
+    if not args.head_ref:
+        missing_arguments.append("--head-ref or GITHUB_HEAD_REF")
+    if missing_arguments:
+        parser.error("Missing required configuration: " + ", ".join(missing_arguments))
+
+    return args
 
 
 def main() -> None:

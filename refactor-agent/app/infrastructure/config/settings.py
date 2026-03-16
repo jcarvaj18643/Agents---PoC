@@ -60,6 +60,15 @@ class Settings:
     github_token: Optional[str] = field(
         default_factory=lambda: os.getenv("GITHUB_TOKEN")
     )
+    github_base_ref: Optional[str] = field(
+        default_factory=lambda: os.getenv("GITHUB_BASE_REF")
+    )
+    github_head_ref: Optional[str] = field(
+        default_factory=lambda: os.getenv("GITHUB_HEAD_REF")
+    )
+    github_repository: Optional[str] = field(
+        default_factory=lambda: os.getenv("GITHUB_REPOSITORY")
+    )
     github_api_base_url: str = field(
         default_factory=lambda: os.getenv("GITHUB_API_BASE_URL", "https://api.github.com")
     )
