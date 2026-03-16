@@ -74,6 +74,9 @@ from app.infrastructure.adapters.reporting.markdown_report_publisher_adapter imp
 from app.infrastructure.adapters.validation.profile_validation_runner_adapter import (
     ProfileValidationRunnerAdapter,
 )
+from app.infrastructure.adapters.validation.profile_impact_target_resolver_adapter import (
+    ProfileImpactTargetResolverAdapter,
+)
 from app.infrastructure.config.settings import Settings
 from app.infrastructure.parsers.diff_parser import DiffParser
 
@@ -145,12 +148,14 @@ def build_container() -> Container:
         max_suggestions_per_run=settings.max_suggestions_per_run,
         enforce_public_api_guard=settings.enforce_public_api_guard,
     )
+    impact_target_resolver = ProfileImpactTargetResolverAdapter()
 
     validation_runner = ProfileValidationRunnerAdapter(
         lint_enabled=settings.enable_lint_validation,
         coverage_enabled=settings.enable_coverage_validation,
         execution_enabled=settings.execute_validation_checks,
         python_coverage_fail_under=settings.python_coverage_fail_under,
+        impact_target_resolver=impact_target_resolver,
     )
 
     # ── Use Cases ─────────────────────────────────────────────────────────────
